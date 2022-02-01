@@ -7,65 +7,50 @@
 
 #include <ds18x20.h>
 
-#define RELAY_PIN 4
+#define app_core 1
+
+#define RELAY_PIN 7
 #define GPIO_RELAY_PIN_SEL (1ULL << RELAY_PIN)
-#define PIR_PIN 5
-#define GPIO_PIR_PIN_SEL (1ULL << PIR_PIN)
-#define ESP_INTR_FLAG_DEFAULT 0
-#define STATE_CHECK_PERIOD 10000
 
-#define TEMP_SENSOR_PIN 21
+#define TEMP_SENSOR_PIN 27
+static float* currentTemp;
+static float desiredTemp;
 
-static void pir_handler(void *arg);
 static void init_hw(void){
     gpio_config_t io_conf;
+
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pin_bit_mask = GPIO_RELAY_PIN_SEL;
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.pull_down_en = 0;
     io_conf.pull_up_en = 0;
     gpio_config(&io_conf);
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = GPIO_PIR_PIN_SEL;
-    io_conf.intr_type = GPIO_INTR_POSEDGE;
-    io_conf.pull_up_en = 1;
-    gpio_config(&io_conf);
-    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-    gpio_isr_handler_add(PIR_PIN, pir_handler, NULL);
-
 }
 
-static TickType_t next = 0;
-const TickType_t period = STATE_CHECK_PERIOD / portTICK_PERIOD_MS;
-static void IRAM_ATTR pir_handler(void *arg){
-    TickType_t now = xTaskGetTickCountFromISR();
-    if (now > next){
-        gpio_set_level(RELAY_PIN, 1);
+void TaskTempRead(void){
+    float* averageTempPtr = 0;
+    float averageTemp = 0;
+    for(int i = 0; i< 20; i++){
+        ds18x20_read_temperature(TEMP_SENSOR_PIN, ds18x20_ANY, averageTempPtr);
+        averageTemp += *averageTempPtr;
     }
-    next = now + period;
+    *currentTemp = averageTemp /20;
+    vTaskDelay(5000);
 }
 
-static void open_relay(void *arg){
-    while (1){
-        TickType_t now = xTaskGetTickCount();
-        if (now > next){
-            gpio_set_level(RELAY_PIN, 0);
-            vTaskDelay(period);
-        }
-        else{
-            vTaskDelay(next - now);
-        }
+void TaskRelayControl(void){
+    int stateOfRelayPin = GPIO_REG_READ(RELAY_PIN);
+    if(*currentTemp < desiredTemp && stateOfRelayPin == 0){
+        GPIO_REG_WRITE(RELAY_PIN, 1);
     }
+    if(*currentTemp >= desiredTemp && stateOfRelayPin == 1){
+        GPIO_REG_WRITE(RELAY_PIN, 0);
+    }
+    vTaskDelay(5000);
 }
 
 void app_main(){
     init_hw();
-    xTaskCreate(open_relay, "openrl", configMINIMAL_STACK_SIZE,NULL, 5, NULL);
-
-    while (1){
-
-        ds18x20_read_temperature(TEMP_SENSOR_PIN, ds18x20_ANY, temps);
-
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
+    xTaskCreatePinnedToCore(TaskTempRead, "readTemp", configMINIMAL_STACK_SIZE,NULL, 5, NULL, app_core);
+    xTaskCreatePinnedToCore(TaskRelayControl, "controlRelay", configMINIMAL_STACK_SIZE,NULL, 5, NULL, app_core);
 }
