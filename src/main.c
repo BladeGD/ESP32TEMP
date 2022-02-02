@@ -102,6 +102,7 @@ static void FSMTempCtrl(void* pvParameters)
                 state = Measure_State;
             break;
             case Measure_State:
+                ESP_LOGI(TAG,"At Measure State");
                 currentTemp = TempRead();
                 if(currentTemp < desiredTemp){
                     ESP_LOGI(TAG,"Going to Low Temp State");
@@ -116,9 +117,10 @@ static void FSMTempCtrl(void* pvParameters)
                 ESP_LOGI(TAG,"At Low Temp State");
                 relayPower = gpio_get_level(RELAY_PIN);
                 if(relayPower == 1){
-                    ESP_LOGI(TAG,"Going to Relay On State");
+                    ESP_LOGI(TAG,"Going to Turn Relay On State");
                     state = Turn_On_Relay_State;
                 }else {
+                    ESP_LOGI(TAG,"Going to Measure State.");
                     state = Measure_State;
                 }
             break;
@@ -126,22 +128,27 @@ static void FSMTempCtrl(void* pvParameters)
                 ESP_LOGI(TAG,"At High Temp State");
                 relayPower = gpio_get_level(RELAY_PIN);
                 if(relayPower ==  0){
-                    ESP_LOGI(TAG,"Going to Relay Off State");
+                    ESP_LOGI(TAG,"Going to Turn Relay Off State");
                     state = Turn_Off_Relay_State;
                 }else {
+                    ESP_LOGI(TAG,"Going to Measure State.");
                     state = Measure_State;
                 }
             break;
             case Turn_On_Relay_State:
-                ESP_LOGI(TAG,"At Relay On State");
+                ESP_LOGI(TAG,"At Turn Relay On State");
                 gpio_set_level(RELAY_PIN, 0);
+                ESP_LOGI(TAG,"Relay is On!");
                 ESP_LOGI(TAG,"Relay State %i" ,gpio_get_level(RELAY_PIN));
+                ESP_LOGI(TAG,"Going to Measure State.");
                 state = Measure_State;
             break;
             case Turn_Off_Relay_State:
-                ESP_LOGI(TAG,"At Relay Off State");
+                ESP_LOGI(TAG,"At Turn Relay Off State");
                 gpio_set_level(RELAY_PIN, 1);
+                ESP_LOGI(TAG,"Relay is Off!");
                 ESP_LOGI(TAG,"Relay State %i" ,gpio_get_level(RELAY_PIN));
+                ESP_LOGI(TAG,"Going to Measure State.");
                 state = Measure_State;
             break;
         }
